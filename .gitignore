@@ -1,0 +1,51 @@
+# Go
+backend/stonescan
+backend/*.test
+*.o
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+dist/
+build/
+.eggs/
+*.so
+
+# Node / React
+node_modules/
+dashboard/dist/
+dashboard/build/
+.next/
+
+# ML / data
+mlops/data/**
+!mlops/data/.gitkeep
+*.onnx
+*.trt
+*.pt
+*.pth
+mlruns/
+.dvc/cache/
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+auth.json
+
+# Build artifacts
+dist/
+*.tar
+*.zip

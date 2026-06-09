@@ -1,0 +1,12 @@
+anomalib
+ultralytics
+torch
+torchvision
+onnx
+onnxruntime
+mlflow
+dvc[s3]
+opencv-python
+scikit-learn
+matplotlib
+pytest

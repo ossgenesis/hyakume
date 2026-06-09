@@ -1,0 +1,31 @@
+flowchart TD
+  subgraph Device[Handheld edge device]
+    CAM[Camera + LED ring\nphotometric stereo] --> CAP[Capture controller]
+    CAP --> PRE[Preprocess + normals]
+    PRE --> INF[Inference engine\nanomaly + segmentation]
+    INF --> GRD[Grading engine\nprofile thresholds]
+    GRD --> UI[On-device UI\npass/fail + heatmap]
+    GRD --> LDB[(Local record store)]
+    LDB --> SYNC[Sync agent\noffline-first queue]
+  end
+
+  SYNC <-->|TLS, signed| API[Cloud API gateway]
+
+  subgraph Cloud[Cloud backend]
+    API --> SVC[App services\norg/user/device/scan]
+    SVC --> DB[(Metadata DB)]
+    SVC --> OBJ[(Object storage\nimages + heatmaps)]
+    SVC --> RPT[Report service\nPDF + integrity hash]
+    SVC --> REG[Model + profile registry]
+    REG -->|signed OTA| SYNC
+  end
+
+  DASH[Web dashboard] --> API
+
+  subgraph MLOps
+    OBJ --> DVC[Data versioning\nDVC]
+    DVC --> LBL[Annotation\nCVAT / Label Studio]
+    LBL --> TRN[Training\nAnomalib + YOLO / SAM]
+    TRN --> MLF[Experiment tracking\nMLflow]
+    MLF --> REG
+  end

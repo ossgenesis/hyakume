@@ -1,0 +1,7 @@
+numpy
+opencv-python-headless
+onnxruntime          # swap for onnxruntime-gpu on Jetson
+pillow
+sqlalchemy
+aiohttp
+pytest

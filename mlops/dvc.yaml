@@ -1,0 +1,31 @@
+stages:
+  train_anomaly:
+    cmd: python train/train_anomaly.py
+    deps:
+      - train/train_anomaly.py
+      - data/
+    outs:
+      - models/anomaly/
+    metrics:
+      - metrics/anomaly.json:
+          cache: false
+
+  train_segmentation:
+    cmd: python train/train_segmentation.py
+    deps:
+      - train/train_segmentation.py
+      - data/
+    outs:
+      - models/segmentation/
+    metrics:
+      - metrics/segmentation.json:
+          cache: false
+
+  export_onnx:
+    cmd: python export/export_onnx.py
+    deps:
+      - export/export_onnx.py
+      - models/anomaly/
+      - models/segmentation/
+    outs:
+      - bundles/
