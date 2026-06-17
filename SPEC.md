@@ -29,7 +29,7 @@ Full product requirements: [stone-defect-project-document/01-PRD-stonescan.md](s
 
 ## 4. Architecture Overview
 
-Four layers: **edge device** (capture + inference + grading + offline record), **cloud backend** (sync + management + reports), **web dashboard** (browse, manage, export), and **MLOps pipeline** (train → registry → OTA).
+Cloud-inference design: `device (stereo + LiDAR) → mobile app → cloud (AKS) → result to mobile/web`. Four parts: **capture unit** (thin device, RGB-D capture only), **mobile app** (relay + operator UI), **cloud backend on Kubernetes** (inference + grading + management + reports), and **MLOps pipeline** (train → deploy model image to the cluster). The device runs no inference.
 
 See [stone-defect-project-document/02-technical-architecture-stonescan.md](stone-defect-project-document/02-technical-architecture-stonescan.md) and [diagram/system-overview.mmd](diagram/system-overview.mmd).
 
@@ -37,21 +37,21 @@ See [stone-defect-project-document/02-technical-architecture-stonescan.md](stone
 
 | Directory | What it is | Language / Framework |
 |---|---|---|
-| `edge/` | On-device app: capture, preprocess, inference, grading, sync | Python |
-| `backend/` | Cloud API + services: org, user, device, scan, profile, report, registry | Go |
+| `edge/` | Capture-unit firmware: stereo + LiDAR RGB-D capture only | Python |
+| `backend/` | Cloud API + services: org, user, device, scan, profile, report; hosts inference + grading | Go (services), Python (model serving) |
 | `dashboard/` | Web SPA: search, scan detail, reports, management | React / TypeScript |
-| `mlops/` | Training, eval, ONNX export, active-learning loop | Python (Anomalib, Ultralytics, DVC, MLflow) |
-| `deploy/` | Infrastructure-as-code: k8s manifests, Docker, Terraform | YAML / HCL |
+| `mlops/` | Training, eval, active-learning loop (RGB-D models) | Python (Anomalib, Ultralytics, DVC, MLflow) |
+| `deploy/` | Infrastructure-as-code: Terraform (AKS + GPU pools), k8s manifests, Docker | YAML / HCL |
 | `diagram/` | Architecture diagrams (Mermaid) | — |
-| `hyakume/` | Design documents (PRD, architecture, security, frontend spec, tickets) | — |
+| `stone-defect-project-document/` | Design documents (PRD, architecture, security, frontend spec, tickets) | — |
 
 ## 6. Release Stages
 
 | Stage | Scope |
 |---|---|
-| **R0 — Bench POC** | Photometric-stereo capture (SS-A1), anomaly detection (SS-B1), on-device result display (SS-C8). Prove detection against expert. |
-| **R1 — Pilot** | Full handheld device; capture quality gate, slab coverage, defect segmentation, fissure/crack discriminator, grading engine, local records, offline sync, reports, org/user/device management, grading profiles, consented data capture. |
-| **R2 — Scale** | OTA signed model updates, buyer-shared report links, active-learning feedback loop, SLAs. |
+| **R0 — Bench POC** | Stereo + LiDAR capture (SS-A1), cloud RGB-D anomaly detection (SS-B1), result on mobile/web (SS-C8). Prove detection against expert. |
+| **R1 — Pilot** | Full capture device + mobile app; capture quality gate, slab coverage, cloud defect segmentation, fissure/crack discriminator, cloud grading, records, reports, org/user/device management, grading profiles, consented data capture. |
+| **R2 — Scale** | Buyer-shared report links, active-learning feedback loop, in-cluster LLM features, SLAs. |
 
 ## 7. Gates
 
@@ -64,12 +64,14 @@ See [stone-defect-project-document/02-technical-architecture-stonescan.md](stone
 | Decision | Rationale |
 |---|---|
 | Anomaly-detection-first | Defects are rare/varied; train mostly on "good" stone — reduces labeled-data needs at R0 |
-| Photometric stereo | Surface relief separates filled fissures from structural cracks cheaply |
-| Offline-first edge inference | Yards/warehouses lack reliable connectivity; also protects latency and privacy |
-| Signed model bundles + OTA | Proprietary models are the moat; must update safely in the field |
-| ONNX → TensorRT / OpenVINO | Single training target, optimized per edge hardware at deploy time |
+| Stereo + LiDAR (RGB-D) | Real 3D surface relief separates filled fissures from structural cracks; commodity sensor, no LED rig |
+| Cloud inference (thin device) | Device stays cheap/replaceable; models iterate centrally with no OTA; GPUs unconstrained by an edge budget |
+| Subscription model | Device bundled with service; moat is the RGB-D dataset + dashboard/inference, not the hardware |
+| AKS + GPU node pools | Free control plane runs 24/7; GPU pools scale to zero when idle; all infra via Terraform |
 | DVC + MLflow | Reproducible data and model lineage for a data-flywheel product |
-| Go backend | Matches ossb toolchain; efficient sync ingestion under high device concurrency |
+| Go backend | Efficient ingestion under high device concurrency; Python sidecar serves the models |
+
+> **Note:** requires connectivity at inspection time — the original offline-first guarantee is intentionally traded away for the thin-device / cloud-inference model.
 
 ## 9. Related Docs
 

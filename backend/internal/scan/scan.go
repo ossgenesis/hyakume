@@ -11,11 +11,14 @@ type Slab struct {
 	CreatedAt time.Time
 }
 
+// Scan is one slab-patch capture. The device produces RGB-D (stereo RGB +
+// LiDAR depth); both are stored as object refs. ModelVersion/ProfileVersion
+// record which cloud model and grading profile produced the result.
 type Scan struct {
 	ID             string
 	SlabID         string
-	ImagesRef      string
-	NormalsRef     string
+	RGBRef         string
+	DepthRef       string
 	ModelVersion   string
 	ProfileVersion string
 	CreatedAt      time.Time

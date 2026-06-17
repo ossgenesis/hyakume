@@ -1,0 +1,24 @@
+# Copy to terraform.tfvars and fill in. Keep terraform.tfvars OUT of git.
+
+subscription_id         = "00000000-0000-0000-0000-000000000000"
+location                = "eastus"
+environment             = "poc"
+
+# Postgres admin password — better to set via env: export TF_VAR_postgres_admin_password=...
+postgres_admin_password = "change-me-strong-password"
+
+# --- GPU sizing ---
+# Full A10 (24GB) for vision model + quantized 7-8B LLM:
+gpu_vm_size        = "Standard_NV36ads_A10_v5"
+# Cheap fractional warm node alternative (1/6 A10, 4GB) — vision only, no LLM:
+# gpu_vm_size      = "Standard_NV6ads_A10_v5"
+
+# Keep one warm GPU during business hours (set 0 to scale fully to zero off-hours):
+gpu_warm_min_count = 0
+gpu_warm_max_count = 2
+gpu_spot_max_count = 2
+
+# --- Reserved capacity (the option you wanted, off by default) ---
+enable_capacity_reservation = false
+capacity_reservation_count  = 1
+capacity_reservation_zone   = "1"

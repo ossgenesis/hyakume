@@ -1,12 +1,16 @@
-anomalib
-ultralytics
-torch
-torchvision
-onnx
-onnxruntime
-mlflow
-dvc[s3]
-opencv-python
-scikit-learn
-matplotlib
-pytest
+# Source of truth is pyproject.toml. This file exists for tools that don't
+# read pyproject (some Dockerfiles, older pip-tools setups).
+anomalib>=2.0,<3.0
+torch>=2.2,<3.0
+torchvision>=0.17,<1.0
+onnx>=1.16
+onnxruntime>=1.18
+mlflow>=2.14,<4.0
+dvc[s3]>=3.50,<4.0
+opencv-python>=4.9
+scikit-learn>=1.4
+matplotlib>=3.8
+pyyaml>=6.0
+pydantic>=2.7
+tqdm>=4.66
+requests>=2.31

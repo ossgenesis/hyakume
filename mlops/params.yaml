@@ -1,0 +1,31 @@
+data:
+  source: mvtec_ad
+  category: capsule
+  # Anomalib's bundled mirror is dead; we pull from a working HF mirror.
+  hf_repo: alexsu52/mvtec_capsule
+  hf_archive: capsule.tar.xz
+  root: data/raw/mvtec_ad
+  image_size: 256
+
+train:
+  model: patchcore
+  backbone: wide_resnet50_2
+  layers: ["layer2", "layer3"]
+  coreset_sampling_ratio: 0.1
+  num_neighbors: 9
+  max_epochs: 1
+  batch_size: 32
+  num_workers: 4
+  seed: 1337
+  accelerator: auto
+  devices: 1
+
+evaluate:
+  metrics: ["image_AUROC", "pixel_AUROC", "image_F1", "pixel_F1"]
+  num_visualization_samples: 8
+  threshold_method: adaptive
+
+export:
+  formats: ["onnx"]
+  opset: 17
+  dynamic_axes: true

@@ -26,7 +26,7 @@
 | **QC Operator** | Operate a device, run scans, view own/site scans; no admin settings |
 | **Auditor / Viewer** | Read-only access to scans and reports |
 | **External Buyer** | Scoped read-only access to specifically shared reports only (R2) |
-| **Device** (machine identity) | Authenticated as itself; can submit scans and pull signed updates |
+| **Device** (machine identity) | Authenticated as itself; pairs with the mobile app and submits captures (firmware updates only — no model bundles) |
 
 ### 2.2 RBAC matrix
 | Capability | Owner | Admin | Operator | Auditor | Buyer |
@@ -42,17 +42,17 @@
 
 ### 2.3 Authentication
 - **Users:** email/password or SSO; **MFA required** for Owner/Admin.
-- **Devices:** enrolled with a unique credential at provisioning; mutually authenticated to the API; revocable.
+- **Devices:** enrolled with a unique credential at provisioning; pair with the mobile app, which relays captures to the API under the operator's session + the device identity; revocable.
 - **API:** short-lived bearer tokens for sessions; scoped, rotatable keys for device/service auth.
 - **External buyers:** access via signed, expiring, scoped share links (R2).
 
 ## 3. Device security
 
 - **Provisioning/enrollment:** each device receives a unique identity and is bound to one organization; lost/compromised devices can be revoked centrally.
-- **Local data encryption:** records and images at rest on the device are encrypted; keys protected by the device's secure storage.
-- **Secure update path:** model/profile bundles are **cryptographically signed**; the device verifies the signature before activating and supports rollback (ties to Architecture §4).
+- **Transient buffering:** the device is capture-only and holds captures transiently (encrypted) until streamed to the paired app; no long-term record storage on the device.
+- **Firmware update path:** device firmware updates are **cryptographically signed**; the device verifies the signature before applying and supports rollback. There are no model bundles on the device — inference models live in the cloud.
+- **Mobile-app safety:** captures queued in the app remain encrypted until uploaded and confirmed; no silent data loss on a connectivity drop.
 - **Tamper considerations:** restrict debug interfaces in production builds; verify app/runtime integrity at start.
-- **Offline safety:** queued records remain encrypted until synced and confirmed; no silent data loss.
 
 ## 4. Data protection
 
@@ -64,7 +64,7 @@
 ### 4.2 Data classification
 | Class | Examples | Handling |
 |---|---|---|
-| Crown-jewel | Trained models, labeled training dataset | Strictest access; signed; not exportable by customers |
+| Crown-jewel | Trained models, labeled RGB-D training dataset | Strictest access; cloud-only (served in-cluster); not exportable by customers |
 | Sensitive | Scan records, reports, dispute evidence, org/customer info | Tenant-isolated, encrypted, access-logged |
 | Operational | Device telemetry, logs | Minimized, consented, retention-limited |
 | Low-PII | Stone images themselves | Generally non-personal; treat metadata (operator, site) as sensitive |
@@ -86,7 +86,7 @@ Note: stone imagery is largely non-personal, but **operator identity, site, cust
 
 - Every data access is scoped by `org_id`; no cross-tenant queries.
 - Object-storage paths and DB rows are partitioned/filtered by tenant.
-- Model bundles may be shared (base) but **per-org grading profiles and data are isolated**.
+- Base inference models are shared across tenants (served in-cluster) but **per-org grading profiles and data are isolated**.
 
 ## 7. Audit logging
 
