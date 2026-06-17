@@ -1,7 +1,5 @@
 numpy
-opencv-python-headless
-onnxruntime          # swap for onnxruntime-gpu on Jetson
+opencv-python-headless   # stereo rectification
+open3d                   # LiDAR depth / point-cloud handling
 pillow
-sqlalchemy
-aiohttp
 pytest

@@ -1,31 +1,47 @@
 stages:
-  train_anomaly:
-    cmd: python train/train_anomaly.py
+  fetch_data:
+    cmd: python scripts/fetch_data.py
     deps:
-      - train/train_anomaly.py
-      - data/
+      - scripts/fetch_data.py
+    params:
+      - data
     outs:
-      - models/anomaly/
+      - data/raw/mvtec_ad
+
+  train:
+    cmd: python scripts/train.py
+    deps:
+      - scripts/train.py
+      - src/stonescan_ml/training/anomaly.py
+      - src/stonescan_ml/config.py
+      - data/raw/mvtec_ad
+    params:
+      - data
+      - train
+    outs:
+      - models/checkpoints
     metrics:
-      - metrics/anomaly.json:
+      - reports/train_metrics.json:
           cache: false
 
-  train_segmentation:
-    cmd: python train/train_segmentation.py
+  evaluate:
+    cmd: python scripts/evaluate.py
     deps:
-      - train/train_segmentation.py
-      - data/
-    outs:
-      - models/segmentation/
+      - scripts/evaluate.py
+      - src/stonescan_ml/evaluation/metrics.py
+      - models/checkpoints
+    params:
+      - evaluate
     metrics:
-      - metrics/segmentation.json:
+      - reports/eval_report.json:
           cache: false
 
-  export_onnx:
-    cmd: python export/export_onnx.py
+  export:
+    cmd: python scripts/export.py
     deps:
-      - export/export_onnx.py
-      - models/anomaly/
-      - models/segmentation/
+      - scripts/export.py
+      - models/checkpoints
+    params:
+      - export
     outs:
-      - bundles/
+      - serving

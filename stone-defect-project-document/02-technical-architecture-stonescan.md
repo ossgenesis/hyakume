@@ -3,80 +3,74 @@
 | | |
 |---|---|
 | **Status** | Draft v0.1 |
-| **Scope** | Edge device, ML pipeline, cloud backend, web dashboard, MLOps |
+| **Scope** | Capture device, mobile app, cloud backend (inference), web dashboard, ML pipeline, MLOps |
 | **Related docs** | PRD, Security & Access, Frontend Spec, Feature Tickets |
 
 ---
 
 ## 1. System overview
 
-StoneScan has four layers: a **handheld edge device** that captures and inspects, a **cloud backend** that stores records and serves the dashboard, a **web dashboard** for management and reporting, and an **MLOps pipeline** that trains models and pushes them back to devices. The design is **offline-first** (the full inspection flow works with no connectivity) and **data-flywheel-oriented** (consented field captures feed training).
+StoneScan is a **cloud-inference** system: `device (stereo + LiDAR) → mobile app → cloud (AKS) → result to mobile/web`. A **thin handheld capture unit** grabs RGB-D (RGB + LiDAR depth) and streams it to a **paired mobile app**, which relays it to a **cloud backend on Kubernetes** that runs inference, grading, storage, and reporting; a **web dashboard** handles management and reporting; an **MLOps pipeline** trains models and deploys them as images into the cluster. The system is **connected** (inspection requires connectivity — a deliberate trade for a cheap, replaceable device) and **data-flywheel-oriented** (consented field captures feed training). It is sold as a **subscription**; the moat is the RGB-D dataset and the dashboard/inference service, not the hardware.
 
 ```mermaid
 flowchart TD
-  subgraph Device[Handheld edge device]
-    CAM[Camera + LED ring\nphotometric stereo] --> CAP[Capture controller]
-    CAP --> PRE[Preprocess + normals]
-    PRE --> INF[Inference engine\nanomaly + segmentation]
-    INF --> GRD[Grading engine\nprofile thresholds]
-    GRD --> UI[On-device UI\npass/fail + heatmap]
-    GRD --> LDB[(Local record store)]
-    LDB --> SYNC[Sync agent\noffline-first queue]
+  subgraph Device[Handheld capture unit]
+    CAM[Stereo camera + LiDAR] --> CAP[Capture controller\nRGB-D, registration]
   end
 
-  SYNC <-->|TLS, signed| API[Cloud API gateway]
+  CAP -->|BLE / USB / Wi-Fi| MOB[Mobile app\nrelay + operator UI]
+  MOB <-->|TLS| API[Cloud API gateway]
 
-  subgraph Cloud[Cloud backend]
+  subgraph Cloud[Cloud backend — AKS / Kubernetes]
     API --> SVC[App services\norg/user/device/scan]
+    API --> INF[Inference service\nRGB-D anomaly + segmentation - GPU]
+    INF --> GRD[Grading service\nprofile thresholds]
+    GRD --> SVC
     SVC --> DB[(Metadata DB)]
-    SVC --> OBJ[(Object storage\nimages + heatmaps)]
+    SVC --> OBJ[(Object storage\nRGB-D captures + heatmaps)]
     SVC --> RPT[Report service\nPDF + integrity hash]
-    SVC --> REG[Model + profile registry]
-    REG -->|signed OTA| SYNC
+    INF -.optional.-> LLM[Lightweight LLM\nreport summaries - GPU]
   end
 
   DASH[Web dashboard] --> API
+  GRD -->|result + heatmap| MOB
 
   subgraph MLOps
     OBJ --> DVC[Data versioning\nDVC]
     DVC --> LBL[Annotation\nCVAT/Label Studio]
-    LBL --> TRN[Training\nAnomalib + YOLO/SAM]
+    LBL --> TRN[Training\nRGB-D models]
     TRN --> MLF[Experiment tracking\nMLflow]
-    MLF --> REG
+    MLF -->|deploy image| INF
   end
 ```
 
 ## 2. Components
 
 ### 2.1 Capture head (hardware)
-Global-shutter machine-vision camera, a multi-angle switchable LED ring for **photometric stereo**, a light **shroud/hood** to control ambient light, and a trigger. The LED sequence and shutter are hardware-triggered/synchronized so each patch yields a set of images under known lighting directions.
+A **stereo camera + LiDAR** unit: synchronized stereo RGB plus a LiDAR depth sensor, with a trigger. Stereo rectification and LiDAR→RGB registration produce a metric **RGB-D** capture per patch — real 3D surface relief, no LED ring or light shroud required. The device is a commodity capture unit: cheap, replaceable, easy to upgrade.
 
-### 2.2 Edge device
-Jetson Orin Nano-class compute (primary target) or a capable phone (alternate), with battery, touchscreen, and storage. Hosts the edge app and runs all inference locally.
+### 2.2 Capture device
+Low-cost embedded capture board (camera + LiDAR interface, radio, battery). It captures and streams only — it runs **no inference**. Pairs over BLE / USB / Wi-Fi with a mobile app.
 
-### 2.3 Edge app (on-device software)
-- **Capture controller** — drives LED/camera sequence, validates exposure/focus (FR-C1/C5).
-- **Preprocessing** — registration of the multi-angle frames, computation of **surface normals / albedo** from photometric stereo (key for fissure-vs-crack, FR-D3).
-- **Inference engine** — runs the model bundle (§3) via ONNX Runtime / OpenVINO / TensorRT.
-- **Grading engine** — applies the active **grading profile** thresholds to produce pass/fail + grade (FR-D4).
-- **Local record store** — embedded DB + local files for offline records (FR-S1).
-- **Sync agent** — offline-first queue with conflict-free upload; pulls signed model/profile updates (FR-S6).
-- **UI** — see Frontend Spec.
+### 2.3 Device + mobile software
+- **Capture controller (on device)** — drives the stereo + LiDAR capture, registers RGB-D, validates exposure/focus (FR-C1/C5).
+- **Mobile app** — relays captures to the cloud over TLS, shows the operator UI (pass/fail + heatmap), handles enrollment/auth. The app is the bridge and the screen; see Frontend Spec.
 
-### 2.4 ML model bundle
-A versioned bundle deployed together:
-1. **Anomaly detector** (Anomalib — PatchCore for accuracy, EfficientAd for edge speed): flags deviation from "good" stone, minimizing labeled-defect needs (FR-D1).
+### 2.4 ML model (served in-cluster)
+Models run as GPU services in the cluster (deployed as container images, no on-device bundle):
+1. **Anomaly detector** (Anomalib — PatchCore/EfficientAd, adapted for RGB-D input): flags deviation from "good" stone, minimizing labeled-defect needs (FR-D1).
 2. **Segmentation/classification** (YOLO-seg / U-Net / distilled SAM 2): localizes and names defects — crack, fissure, pit, stain, chip, impurity (FR-D2).
-3. **Fissure-vs-crack discriminator**: uses photometric-stereo surface-normal/relief features to separate filled fissures from structural cracks (FR-D3).
+3. **Fissure-vs-crack discriminator**: uses LiDAR depth / surface-relief features to separate filled fissures from structural cracks (FR-D3).
 4. **Per-stone-type routing**: selects models/profile by stone type (FR-D6).
 
-### 2.5 Cloud backend
+### 2.5 Cloud backend (Kubernetes / AKS)
 - **API gateway** — authenticated ingestion + dashboard API.
 - **App services** — org, user, device, scan/slab, grading-profile services.
+- **Inference + grading services** — GPU-backed model serving and profile-threshold grading (FR-D1–D4).
 - **Metadata DB** — relational store for entities (§5).
-- **Object storage** — images, heatmaps, report PDFs.
+- **Object storage** — RGB-D captures, heatmaps, report PDFs.
 - **Report service** — renders PDFs, computes record **integrity hashes** (FR-R4).
-- **Model & profile registry** — versioned artifacts, signs them for **OTA** delivery (FR-S6).
+- **Container registry** — versioned model server images, deployed to the cluster (replaces the old signed-OTA registry).
 
 ### 2.6 Web dashboard
 React SPA for browse/search, scan detail, reports, grading-profile config, device/user/org management (see Frontend Spec).
@@ -89,18 +83,18 @@ React SPA for browse/search, scan detail, reports, grading-profile config, devic
 
 ## 3. Data flow
 
-1. Operator triggers a capture → LED/camera sequence produces multi-angle frames.
-2. Preprocess registers frames and derives surface normals/albedo.
-3. Inference: anomaly map → segmentation/classification → fissure/crack discrimination.
-4. Grading engine applies the active profile → pass/fail + grade + defect list.
-5. UI shows heatmap + result; a per-slab record is written locally.
-6. Sync agent uploads records (images, heatmap, metadata) over TLS when connected.
-7. Cloud stores metadata + objects, renders reports, indexes for dashboard search.
-8. Consented images flow into DVC → annotation → training → MLflow → registry → signed OTA back to devices.
+1. Operator triggers a capture → stereo + LiDAR unit produces a registered **RGB-D** frame.
+2. Device streams the capture to the paired mobile app.
+3. Mobile app uploads the capture to the cloud over TLS.
+4. Cloud inference: anomaly map → segmentation/classification → fissure/crack discrimination (on GPU).
+5. Grading service applies the active profile → pass/fail + grade + defect list.
+6. Result + heatmap returned to the mobile app/dashboard; a per-slab record + objects are stored in the cloud.
+7. Cloud indexes metadata for dashboard search and renders reports on demand.
+8. Consented captures flow into DVC → annotation → training → MLflow → new model image deployed to the cluster.
 
-## 4. Edge inference stack
+## 4. Cloud inference stack
 
-Models trained in PyTorch are exported to **ONNX**, then optimized per target: **TensorRT** on Jetson, **OpenVINO** on x86, or mobile runtimes on phone. **Quantization** (INT8/FP16) to meet NFR-2 (< 300 ms/patch). The bundle is versioned and signed; the edge verifies signatures before activating (see Security doc).
+Models trained in PyTorch are served in-cluster on GPU nodes (e.g. ONNX Runtime-GPU or Triton behind a FastAPI/gRPC service), packaged as container images and deployed via the GPU node pools (see `deploy/terraform`). Updating a model is a normal cluster deploy — no per-device bundles, no signing, no OTA. GPU pools scale to zero when idle; a warm node keeps latency low during business hours. A lightweight LLM may run on the spot GPU pool for report summaries / operator Q&A.
 
 ## 5. Data model (key entities)
 
@@ -108,26 +102,26 @@ Models trained in PyTorch are exported to **ONNX**, then optimized per target: *
 |---|---|
 | Organization | id, name, plan, data-opt-in flag |
 | User | id, org_id, role, auth identity |
-| Device | id, org_id, enrollment status, current bundle version |
+| Device | id, org_id, enrollment status, firmware version |
 | GradingProfile | id, org_id, stone_type, thresholds, version |
 | ScanSession | id, org_id, device_id, operator_id, started_at |
 | Slab | id, session_id, label/lot, stone_type, final_grade |
-| Scan (patch) | id, slab_id, images_ref, normals_ref, model_version, profile_version, created_at |
+| Scan (patch) | id, slab_id, rgb_ref, depth_ref, model_version, profile_version, created_at |
 | Defect | id, scan_id, type, bbox/mask_ref, confidence |
 | Record/Report | id, slab_id, pdf_ref, integrity_hash, created_at |
-| ModelBundle | version, components, signature, metrics |
+| ModelImage | version, image ref, components, metrics |
 | DatasetVersion | id, dvc_ref, source scans, labels |
 
 ## 6. Deployment & scalability
 
-- Cloud: containerized services; object storage + managed relational DB; horizontally scalable API tier (NFR-7/8).
-- Edge: immutable signed bundles; staged OTA rollout with rollback.
+- Cloud: AKS with a CPU system pool + GPU node pools (warm + spot); object storage + managed Postgres; horizontally scalable API tier (NFR-7/8). All infra via Terraform (`deploy/terraform`). Reserved GPU capacity is an option when availability is tight.
+- Device: commodity capture unit; firmware updates only (no model OTA).
 - Environments: dev / staging / prod; infrastructure-as-code.
 
 ## 7. Observability
 
-- Edge: local logs, capture/inference metrics, sync health, battery telemetry (consented).
-- Cloud: API metrics, error tracking, storage/DB monitoring.
+- Device/app: capture quality metrics, upload health, battery telemetry (consented).
+- Cloud: API + inference latency metrics, GPU utilization, error tracking, storage/DB monitoring.
 - ML: per-version metrics in MLflow; **drift monitoring** on incoming scan distributions; alert when accuracy proxy degrades.
 
 ## 8. Key technical decisions & rationale
@@ -135,8 +129,11 @@ Models trained in PyTorch are exported to **ONNX**, then optimized per target: *
 | Decision | Rationale |
 |---|---|
 | Anomaly-detection-first | Defects are rare/varied; train mostly on "good" stone |
-| Photometric stereo | Surface relief separates fissures from cracks; cheaper than 3D scanners |
-| Offline-first edge inference | Yards/warehouses lack reliable connectivity; latency/privacy |
-| Signed bundles + OTA | Protect proprietary models (the moat) and enable safe updates |
+| Stereo + LiDAR (RGB-D) | Real 3D surface relief separates fissures from cracks; commodity sensor, no LED rig |
+| Cloud inference (thin device) | Cheap, replaceable device; central model iteration with no OTA; GPUs unconstrained by edge budget |
+| Subscription model | Device bundled with service; moat is the RGB-D dataset + dashboard/inference |
+| AKS + GPU node pools (Terraform) | Free control plane 24/7; GPU scales to zero; reserved capacity optional |
 | DVC + MLflow | Reproducible data/model lineage for a data-flywheel product |
-| Reusable engine boundaries | Capture, inference, grading kept vertical-agnostic for later markets |
+| Reusable service boundaries | Capture, inference, grading kept vertical-agnostic for later markets |
+
+> **Trade-off:** this design requires connectivity at inspection time, intentionally giving up the original offline-first guarantee in exchange for a commodity device and central model iteration.

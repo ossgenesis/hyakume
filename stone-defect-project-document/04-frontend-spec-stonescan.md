@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Draft v0.1 |
-| **Surfaces** | (A) On-device operator UI, (B) Web dashboard |
+| **Surfaces** | (A) Mobile operator app, (B) Web dashboard |
 | **Related docs** | PRD, Technical Architecture, Security & Access, Feature Tickets |
 
 ---
@@ -12,22 +12,22 @@
 
 - **Glanceable & one-handed** — the operator works in a noisy, dusty, bright bay; the core result (pass/fail) must read at arm's length in ≤ 1 second.
 - **Minimal taps** — a scan completes in ≤ 2 taps (NFR-10).
-- **Offline-honest** — the UI always shows sync state; nothing implies data is lost when offline.
+- **Connection-honest** — the UI always shows upload/sync state; nothing implies data is lost on a connectivity drop.
 - **High contrast & large targets** — usable with gloves, in sunlight, by non-technical users.
 - **Trust-forward** — results show confidence and a clear, explainable defect overlay, not a black box.
 - **Localized** — operator UI in English + pilot-market language at R1 (NFR-11).
 
 ---
 
-## 2. Surface A — On-device operator UI
+## 2. Surface A — Mobile operator app
 
-Runs on the handheld touchscreen. Target framework: a lightweight kiosk UI (e.g. Flutter or a web/Qt shell) on the edge device; full offline operation.
+Runs on the operator's phone, paired with the stereo + LiDAR capture unit. Target framework: native / cross-platform mobile (e.g. Flutter). Requires connectivity for results; captures queue and retry on a drop.
 
 ### 2.1 Screens
 
 **A1. Sign-in / device ready**
-- Operator sign-in (or device-bound session); shows device + org, current model bundle version, sync state, battery.
-- States: signed-out, ready, update-available.
+- Operator sign-in (or device-bound session); shows org, paired capture unit + firmware version, connection/sync state, device battery.
+- States: signed-out, ready, device-unpaired.
 
 **A2. New session / slab setup**
 - Select stone type (or auto-detect), optional slab/lot label, grading profile (defaults to org/customer profile).
@@ -37,7 +37,7 @@ Runs on the handheld touchscreen. Target framework: a lightweight kiosk UI (e.g.
 - Camera viewfinder with framing guide; large **trigger** button.
 - Coverage indicator (which parts of the slab are scanned) (FR-C4).
 - Inline quality warnings: "too dark / move closer / hold steady" with retake (FR-C5).
-- States: live, capturing (photometric sequence in progress), quality-warning.
+- States: live, capturing (stereo + LiDAR capture in progress), quality-warning.
 
 **A4. Patch result**
 - Pass/fail badge (color + icon + text, never color alone — accessibility).
@@ -48,19 +48,19 @@ Runs on the handheld touchscreen. Target framework: a lightweight kiosk UI (e.g.
 **A5. Slab summary**
 - Aggregated grade for the slab, count by defect type, coverage.
 - Actions: **Finish slab**, **Add report note**, **Generate report**.
-- Save writes the local record (FR-R2).
+- Save uploads the per-slab record to the cloud, queued if there's no connection (FR-R2).
 
-**A6. Sync & queue**
-- Pending uploads, last sync time, retry; clear messaging when offline.
+**A6. Upload queue**
+- Pending uploads, last sync time, retry; clear messaging when there's no connection.
 
 **A7. Settings**
-- Active grading profile (read/select), calibration/light-check routine, language, device info, update now.
+- Active grading profile (read/select), stereo + LiDAR calibration/check routine, language, device info, firmware update.
 
 ### 2.2 Component states (all screens)
 Every data view defines: **loading**, **empty**, **error**, **offline**. Capture and result views additionally define **low-confidence** (prompt to rescan or flag).
 
-### 2.3 Key on-device flow
-`A1 → A2 → A3 (capture patches) → A4 (per patch) → A5 (finish) → record saved → A6 syncs`
+### 2.3 Key mobile flow
+`A1 → A2 → A3 (capture patches) → cloud inference → A4 (per patch) → A5 (finish) → record uploaded → A6 queue`
 
 ---
 
@@ -82,13 +82,13 @@ React SPA. Authenticated per Security doc; views are RBAC-gated.
 
 **B6. Grading profiles** — create/edit per stone type and per customer: thresholds, which defect types fail, grade tiers; versioned. (FR-S5)
 
-**B7. Devices** — enroll, view status/bundle version, revoke; staged update rollout view. (FR-S4)
+**B7. Devices** — enroll, view status/firmware version, revoke; staged firmware rollout view. (FR-S4)
 
 **B8. Users & roles** — invite, assign roles, MFA status, remove. (FR-S3)
 
 **B9. Org settings** — org profile, **data-opt-in toggle** (FR-S7), retention policy, billing (Owner).
 
-**B10. Model & updates (admin/internal)** — current bundle, available versions, rollout status. (FR-S6)
+**B10. Models & deploys (admin/internal)** — current cloud model version, available versions, cluster deploy/rollout status. (FR-S6)
 
 ### 3.2 Component states
 List/detail/admin views each define loading, empty, error, and permission-denied states. Destructive actions (revoke device, delete record, remove user) require confirmation.
@@ -117,12 +117,13 @@ List/detail/admin views each define loading, empty, error, and permission-denied
 - Clean, flat, high-contrast; consistent design tokens across both surfaces; pass = clear positive treatment, fail = clear negative treatment, both with text labels. Defect overlay uses a consistent color-by-type legend.
 
 ### 4.5 Performance
-- On-device UI must remain responsive during the inference (< 300 ms target, NFR-2) with a clear in-progress state.
+- Mobile app must remain responsive during cloud inference (warm-GPU target, NFR-2), showing upload + in-progress state.
 - Dashboard lists paginate / virtualize for large histories (NFR-8).
 
 ---
 
 ## 5. Open questions
 - Capture model: discrete patches vs. continuous sweep-and-stitch (affects A3/A4 design) — resolve in R1 field testing.
-- Is the on-device UI web-based (shared components with dashboard) or native — decide based on edge framework choice.
+- Mobile app: native per-platform vs. cross-platform (Flutter) — decide at R1.
+- How much preprocessing (stereo rectification / LiDAR→RGB registration) runs on the phone vs. in the cloud — affects upload size and latency.
 - Buyer-facing report view: hosted page vs. signed PDF only (R2).

@@ -1,31 +1,29 @@
 flowchart TD
-  subgraph Device[Handheld edge device]
-    CAM[Camera + LED ring\nphotometric stereo] --> CAP[Capture controller]
-    CAP --> PRE[Preprocess + normals]
-    PRE --> INF[Inference engine\nanomaly + segmentation]
-    INF --> GRD[Grading engine\nprofile thresholds]
-    GRD --> UI[On-device UI\npass/fail + heatmap]
-    GRD --> LDB[(Local record store)]
-    LDB --> SYNC[Sync agent\noffline-first queue]
+  subgraph Device[Handheld capture unit]
+    CAM[Stereo camera + LiDAR] --> CAP[Capture controller\nRGB-D, registration]
   end
 
-  SYNC <-->|TLS, signed| API[Cloud API gateway]
+  CAP -->|BLE / USB / Wi-Fi| MOB[Mobile app\nrelay + operator UI]
+  MOB <-->|TLS| API[Cloud API gateway]
 
-  subgraph Cloud[Cloud backend]
+  subgraph Cloud[Cloud backend — AKS / Kubernetes]
     API --> SVC[App services\norg/user/device/scan]
+    API --> INF[Inference service\nRGB-D anomaly + segmentation - GPU]
+    INF --> GRD[Grading service\nprofile thresholds]
+    GRD --> SVC
     SVC --> DB[(Metadata DB)]
-    SVC --> OBJ[(Object storage\nimages + heatmaps)]
+    SVC --> OBJ[(Object storage\nRGB-D captures + heatmaps)]
     SVC --> RPT[Report service\nPDF + integrity hash]
-    SVC --> REG[Model + profile registry]
-    REG -->|signed OTA| SYNC
+    INF -.optional.-> LLM[Lightweight LLM\nreport summaries - GPU]
   end
 
   DASH[Web dashboard] --> API
+  GRD -->|result + heatmap| MOB
 
   subgraph MLOps
     OBJ --> DVC[Data versioning\nDVC]
     DVC --> LBL[Annotation\nCVAT / Label Studio]
-    LBL --> TRN[Training\nAnomalib + YOLO / SAM]
+    LBL --> TRN[Training\nRGB-D models]
     TRN --> MLF[Experiment tracking\nMLflow]
-    MLF --> REG
+    MLF -->|deploy image| INF
   end

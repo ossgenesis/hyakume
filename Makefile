@@ -13,7 +13,7 @@ edge-test:
 	cd edge && python -m pytest tests/
 
 mlops-eval:
-	cd mlops && python eval/run_eval.py
+	cd mlops && make eval
 
 lint:
 	cd backend && go vet ./...

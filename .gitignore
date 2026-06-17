@@ -28,10 +28,22 @@ mlops/data/**
 *.pt
 *.pth
 mlruns/
+mlflow.db
+*.db-journal
 .dvc/cache/
+
+# Terraform
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+crash.log
+crash.*.log
 
 # Editor / OS
 .DS_Store
+._*
 .idea/
 .vscode/
 *.swp

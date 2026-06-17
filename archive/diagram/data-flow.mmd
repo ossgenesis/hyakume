@@ -1,0 +1,23 @@
+sequenceDiagram
+  participant Op as Operator
+  participant Cap as Capture controller
+  participant Pre as Preprocess
+  participant Inf as Inference engine
+  participant Grd as Grading engine
+  participant UI as On-device UI
+  participant Str as Local store
+  participant Syn as Sync agent
+  participant API as Cloud API
+  participant MLOps
+
+  Op->>Cap: trigger
+  Cap->>Pre: multi-angle frames
+  Pre->>Inf: normals + albedo
+  Inf->>Grd: anomaly map + defect list
+  Grd->>UI: pass/fail + grade + heatmap
+  Grd->>Str: write per-slab record
+  Str->>Syn: queue (offline-first)
+  Syn-->>API: upload when connected (TLS)
+  API-->>MLOps: consented images → DVC
+  MLOps-->>API: new signed model bundle
+  API-->>Syn: OTA bundle delivery
